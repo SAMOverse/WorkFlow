@@ -42,10 +42,11 @@ Full rationale in `docs/PROJECT_SPEC.md` §4.
 ## Development Commands
 
 ```bash
-npm install
-npm run dev        # Vite dev server
-npm run build       # production build
-netlify dev         # local Netlify Functions + frontend together, once functions exist
+npm install         # run from a local (non-Drive) clone -- see LESSONS_LEARNED.md LL-001
+npm run dev          # Vite dev server
+npm run build        # production build
+npm run lint         # ESLint
+netlify dev          # local Netlify Functions + frontend together, once functions exist
 ```
 
 ---
