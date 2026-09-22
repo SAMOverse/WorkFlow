@@ -130,6 +130,16 @@ User's ask: delete a dependency by clicking its arrow, instead of opening the ta
 
 ---
 
+## Resolved: Sharing the Mockup with Coworkers Now (2026-09-22)
+
+User's real near-term goal: internal use + a public GitHub side project, not monetized — coworkers should be able to use it for their actual work ASAP and give feedback, not wait for the real build. Each coworker works on their **own separate project**, independently (not co-editing the same schedule) — a possible future "collaborative planning — stitch individual scopes together" feature was mentioned but is explicitly not needed now.
+
+Checked the `db` capability's actual spec rather than guessing: it's a **shared** store by default (not per-viewer-private — the mockup doesn't use the special `data/users/<id>/` private namespace), but "last-writer-wins, no transactions" with no live sync. Since each coworker uses a separate project document, this collision risk barely applies to the described usage pattern (different people, different documents) — it would only matter once two people edit the *same* project at once, which isn't happening yet.
+
+**Decision: use the mockup as-is for this, via the artifact's email-invite sharing (not the bare public link)** — the Share menu's own description notes email invites to people outside the organization are supported separately from the plain link, which is likely what avoids a read-only cap for the user's outside-org coworkers. No standalone app or rushed hosted build needed just to unblock this pilot.
+
+**Important, and worth remembering for later**: a standalone Electron app would be the *wrong* direction for the eventual "collaborative planning" feature specifically — it gets each person their own local copy with zero built-in sharing, the opposite of what cross-person scope-stitching needs. When that feature becomes real, it points toward the hosted Netlify+Supabase path (real-time sync, per-user auth, real audit trail — none of which a bundled Artifact db or a standalone desktop app naturally provide), not toward standalone.
+
 ## Open Decision: Distribution & Backend Architecture
 
 **Not yet committed.** This has come up twice now and needs a real decision before real build work starts, because it changes the backend entirely:
