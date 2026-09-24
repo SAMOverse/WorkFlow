@@ -20,7 +20,7 @@ This project is new — there's no long history to catch up on yet. Until `docs/
 2. Read `docs/PROJECT_SPEC.md` (the vision/scope/architecture) and `docs/LIVING_PROJECT_STATE.md` (current build status).
 3. Check `docs/LESSONS_LEARNED.md` for anything relevant to what you're about to touch.
 
-Once this project has real session history, adopt the same discipline SAL Operations uses (see its own CLAUDE.md for the pattern this will likely converge on): a short "SESSION START PROTOCOL" summary block in `LIVING_PROJECT_STATE.md`, updated at every session close, so a new session doesn't need to re-read everything.
+Once this project has real session history, adopt the same discipline SAL Operations uses (see its own CLAUDE.md for the pattern this will likely converge on): a short "SESSION START PROTOCOL" summary block in `LIVING_PROJECT_STATE.md`, updated at every session close, so a new session doesn't need to re-read everything. **Carry over the size-check gate too, not just the format** — SAL Operations' `LIVING_PROJECT_STATE.md` grew to ~90K characters despite a written "keep it short" instruction (twice, in two different sections), because a prose aspiration alone doesn't hold. Whatever session-close routine gets adopted here should include a `wc -c` check against a real ceiling (SAL Operations uses ~75,000 chars) as a mandatory step from day one, not bolted on after it's already grown.
 
 ---
 
