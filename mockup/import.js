@@ -132,7 +132,7 @@ byId('importConfirm').onclick=()=>{
       if(!groupIds[key]){
         const gid=uid('g');
         proj.tasks.push({id:gid, phase:r.phaseId, name:r.subGroupName||'Imported group', group:true, parent:null, collapsed:false,
-          history:[{date:iso(TODAY), text:'By You — Group created from the imported schedule’s own WBS structure.'}]});
+          history:[{date:iso(DEMO_TODAY), text:'By You — Group created from the imported schedule’s own WBS structure.'}]});
         groupIds[key]=gid;
       }
       parentId=groupIds[key];
@@ -143,7 +143,7 @@ byId('importConfirm').onclick=()=>{
       status: r.status||'upcoming', pct: 0, notes: r.notes||'', parent: parentId,
       wbsRef: (r._extra && r._extra['WBS code']) || undefined,
       sourceDuration: (r._extra && r._extra['Source duration text']) || undefined,
-      history: [{date: iso(TODAY), text: 'By You — Imported.'}]
+      history: [{date: iso(DEMO_TODAY), text: 'By You — Imported.'}]
     });
   });
   persistProject(proj);
@@ -408,7 +408,7 @@ async function interpretPastedText(text){
     const arr=Array.isArray(data) ? data : (data && Array.isArray(data.tasks) ? data.tasks : null);
     if(!arr) throw {code:'invalid_json'};
     return arr.map(x=>{
-      const s=safeDateOrNull(x.start) ?? TODAY;
+      const s=safeDateOrNull(x.start) ?? DEMO_TODAY;
       let e=safeDateOrNull(x.end); e=(e===null?s:e)+1; if(e<=s) e=s+1;
       return {include:true, name:String(x.name||'Untitled').slice(0,140), start:s, end:e, phaseId:PHASES[0].id, status:'upcoming', notes:String(x.notes||'')};
     });
@@ -500,7 +500,11 @@ byId('importPdfFile').addEventListener('change', async e=>{
     if(!text.trim()){
       byId('importPasteStatus').textContent='No selectable text found in that PDF — it may be scanned/image-only. Run it through OCR or a PDF-to-Excel tool first, then use the Excel tab instead.';
     } else {
-      byId('importPasteText').value=text;
+      /* Scope the extracted text to this import flow only — never leave raw PDF text
+         sitting in a reusable field that other code (or a future session) could read
+         for any other purpose. Flag it so the user knows this text came from a PDF
+         and is about to go through interpretation. */
+      byId('importPasteText').value = text + '\n\n[Pasted from PDF — prepared for Claude interpretation. Review the parsed tasks below before importing.]';
       await runPasteParse();
     }
   } catch(err){

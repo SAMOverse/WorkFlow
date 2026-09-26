@@ -75,6 +75,10 @@ input,select,textarea{font:inherit; color:inherit;}
 .legend-swatch{width:14px;height:9px;border-radius:2px; flex:0 0 14px;}
 .sidebar-foot{margin-top:auto; padding:8px 4px 0; font-size:11px; color:var(--ink-faint); border-top:1px solid var(--line); padding-top:12px;}
 .build-info{margin-top:8px; font-family:"IBM Plex Mono",monospace; font-size:10px; color:var(--ink-faint); opacity:.7;}
+.env-badge{margin-top:8px; font-family:"IBM Plex Mono",monospace; font-size:10px; padding:2px 6px; border-radius:4px; transition:background .15s, color .15s;}
+.env-badge.env-connected{background:var(--ok-bg); color:var(--ok);}
+.env-badge.env-standalone{background:var(--info-bg); color:var(--info);}
+.env-badge.env-standalone-new{background:var(--hold-bg); color:var(--hold);}
 
 /* ---------- Main ---------- */
 .main{flex:1; display:flex; flex-direction:column; min-width:0;}
@@ -214,7 +218,7 @@ input,select,textarea{font:inherit; color:inherit;}
 .transfer-marker.heli{background:var(--info-bg); color:var(--info);}
 .transfer-marker.boat{background:var(--accent-dim); color:var(--accent);}
 
-.overlay{position:absolute; top:0; left:280px; pointer-events:none;}
+.overlay{position:absolute; top:0; left:var(--label-w,280px); pointer-events:none;}
 .dep-path{fill:none; stroke:var(--ink-faint); stroke-width:1.4; opacity:.55; transition:stroke .1s, opacity .1s;}
 .dep-path.linking{stroke:var(--accent); stroke-width:2; stroke-dasharray:4 3; opacity:.9;}
 /* Invisible wide stroke carries the click target (the visible line above is only 1.4px,

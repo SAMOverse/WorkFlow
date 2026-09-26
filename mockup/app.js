@@ -4,7 +4,7 @@
 const BUILD_INFO='v34 · 2026-09-26';
 const ROW_H=34, PHASE_H=32, RES_H=44;
 const PX={day:36, week:13, month:4.5};
-const TODAY=D('2027-03-24');
+const DEMO_TODAY=D('2027-03-24');
 const state={projectId:'galoc', tab:'gantt', zoom:'week', collapsed:new Set(), selectedId:null, editingResId:null, pendingResources:[], pendingPreds:[], newTaskRes:[], showPOB:true, editingXferId:null, xfManifest:[], visibleCols:new Set(),
   multiSel:new Set(), creatingGroup:false, moveMenuOpen:false, renamingGroupId:null};
 
@@ -21,7 +21,7 @@ function leafTasks(proj){ return proj.tasks.filter(x=>!x.group); }
 function childrenOf(proj, groupId){ return proj.tasks.filter(x=>x.parent===groupId); }
 function rollupOf(proj, g){
   const kids=childrenOf(proj, g.id);
-  if(!kids.length) return {start:TODAY, end:TODAY+1};
+  if(!kids.length) return null;
   return {start:Math.min(...kids.map(k=>k.start)), end:Math.max(...kids.map(k=>k.end))};
 }
 /* the row that actually represents `id` right now: itself if visible, otherwise
@@ -43,7 +43,7 @@ function cleanupEmptyGroup(proj, groupId){
    they're further nested in. */
 function phaseRollup(proj, phaseId){
   const kids=proj.tasks.filter(x=>x.phase===phaseId && !x.group);
-  if(!kids.length) return {start:TODAY, end:TODAY+1};
+  if(!kids.length) return null;
   return {start:Math.min(...kids.map(k=>k.start)), end:Math.max(...kids.map(k=>k.end))};
 }
 /* the top-level (ungrouped-or-group) sibling immediately before `taskId` in its phase,
@@ -86,7 +86,7 @@ function applyReparent(proj, taskId, targetId){
   // named after it (renaming is one click, via the group's own name label).
   const oldParent=t.parent;
   const groupId=uid('g');
-  const g={id:groupId, phase:target.phase, name:target.name, group:true, parent:null, collapsed:false, history:[{date:iso(TODAY),text:'By You — Group created.'}]};
+  const g={id:groupId, phase:target.phase, name:target.name, group:true, parent:null, collapsed:false, history:[{date:iso(DEMO_TODAY),text:'By You — Group created.'}]};
   const idx=proj.tasks.findIndex(x=>x.id===target.id);
   proj.tasks.splice(idx,0,g);
   target.parent=groupId;
@@ -211,9 +211,48 @@ function deserializeTransfers(transfers){ return (transfers||[]).map(x=>({...x, 
 function statusClassFor(status){
   return {Active:'active-status', Planning:'planning-status', 'On Hold':'hold-status', Closed:'closed-status'}[status] || 'active-status';
 }
+
+/* ---------- localStorage fallback (standalone mode) ----------
+   When the artifact's bundled db capability isn't available, persist projects,
+   resources, shifts, and POB cap to localStorage so edits survive a reload.
+   Always writes to localStorage (belt-and-suspenders alongside the db path);
+   the db path is tried first and wins when both are available. */
+const LS_KEY='workflow-standalone-v1';
+function loadFromLocalStorage(){
+  try{
+    const raw=localStorage.getItem(LS_KEY);
+    if(!raw) return null;
+    const obj=JSON.parse(raw);
+    if(!obj || !Array.isArray(obj.projects)) return null;
+    return obj;
+  }catch(e){ return null; }
+}
+function saveToLocalStorage(){
+  try{
+    const obj={
+      projects: PROJECTS.map(p=>({id:p.id,name:p.name,status:p.status,statusClass:p.statusClass,
+        tasks:serializeTasks(p.tasks),transfers:serializeTransfers(p.transfers||[])})),
+      resources: RES, shifts: SHIFTS, pobCap: POB_CAP
+    };
+    localStorage.setItem(LS_KEY, JSON.stringify(obj));
+  }catch(e){ /* quota exceeded, private mode — fail silently, seed wins next load */ }
+}
+
 async function loadState(){
   DB=await getDb();
-  if(!DB){ PROJECTS=SEED_PROJECTS.map(p=>({...p})); RES=SEED_RES; SHIFTS=SEED_SHIFTS; POB_CAP=SEED_POB_CAP; return; }
+  if(!DB){
+    // No artifact db — try localStorage, then fall back to seed data.
+    const ls=loadFromLocalStorage();
+    if(ls){
+      PROJECTS=ls.projects.map(p=>({...p, tasks:deserializeTasks(p.tasks), transfers:deserializeTransfers(p.transfers||[])})) || [];
+      RES=ls.resources||SEED_RES; SHIFTS=ls.shifts||SEED_SHIFTS;
+      POB_CAP=(typeof ls.pobCap==='number')?ls.pobCap:SEED_POB_CAP;
+      if(!PROJECTS.length) PROJECTS=SEED_PROJECTS.map(p=>({...p}));
+    } else {
+      PROJECTS=SEED_PROJECTS.map(p=>({...p})); RES=SEED_RES; SHIFTS=SEED_SHIFTS; POB_CAP=SEED_POB_CAP;
+    }
+    return;
+  }
   try{
     const cfgSnap=await DB.doc('config/main').get();
     const cfg=cfgSnap.exists?cfgSnap.data():{};
@@ -242,10 +281,11 @@ async function loadState(){
   if(!PROJECTS.find(p=>p.id===state.projectId)) state.projectId=PROJECTS[0].id;
 }
 function persistProject(proj){
+  saveToLocalStorage();
   if(!DB||!proj) return;
   DB.doc('projects/'+proj.id).set({name:proj.name, status:proj.status, statusClass:proj.statusClass, tasks:serializeTasks(proj.tasks), transfers:serializeTransfers(proj.transfers||[])}).catch(()=>{});
 }
-function persistConfig(){ if(!DB) return; DB.doc('config/main').set({resources:RES, shifts:SHIFTS, pobCap:POB_CAP}).catch(()=>{}); }
+function persistConfig(){ saveToLocalStorage(); if(!DB) return; DB.doc('config/main').set({resources:RES, shifts:SHIFTS, pobCap:POB_CAP}).catch(()=>{}); }
 function persistProjectIndex(){ if(!DB) return; DB.doc('config/projects').set({ids:PROJECTS.map(p=>p.id)}).catch(()=>{}); }
 
 /* ---------- import / export / print ---------- */
@@ -253,9 +293,17 @@ async function getDownloads(){
   if(!window.claude || !window.claude.use) return null;
   try{ return await window.claude.use('downloads'); } catch(e){ return null; }
 }
+function standaloneDownload(filename, content){
+  // Blob-based file save that works in any modern browser without the artifact's downloads capability.
+  const blob=new Blob([content], {type:'application/octet-stream'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=filename; document.body.appendChild(a); a.click();
+  document.body.removeChild(a); URL.revokeObjectURL(url);
+}
 function exportSnapshot(){
   return {
-    workflowExport: 1, exportedAt: iso(TODAY),
+    workflowExport: 1, exportedAt: iso(DEMO_TODAY),
     resources: RES, shifts: SHIFTS, pobCap: POB_CAP,
     projects: PROJECTS.map(p=>({id:p.id, name:p.name, status:p.status, statusClass:p.statusClass, tasks:serializeTasks(p.tasks), transfers:serializeTransfers(p.transfers||[])}))
   };
@@ -280,15 +328,29 @@ function exportCSV(){
 }
 async function doExportJSON(){
   const dl=await getDownloads();
-  if(!dl){ showToast('Downloads are not available in this view.'); return; }
-  try{ await dl.save({filename:'workflow-export.json', data:JSON.stringify(exportSnapshot(), null, 2)}); showToast('✓ Exported workflow-export.json'); }
-  catch(e){ if(!e || e.code!=='declined') showToast('✗ Export failed.'); }
+  if(dl){
+    try{ await dl.save({filename:'workflow-export.json', data:JSON.stringify(exportSnapshot(), null, 2)}); showToast('✓ Exported workflow-export.json'); }
+    catch(e){ if(!e || e.code!=='declined') showToast('✗ Export failed.'); }
+    return;
+  }
+  // Standalone fallback: save via Blob.
+  try{
+    standaloneDownload('workflow-export.json', JSON.stringify(exportSnapshot(), null, 2));
+    showToast('✓ Exported workflow-export.json');
+  }catch(e){ showToast('✗ Export failed.'); }
 }
 async function doExportCSV(){
   const dl=await getDownloads();
-  if(!dl){ showToast('Downloads are not available in this view.'); return; }
-  try{ await dl.save({filename:project().id+'-tasks.csv', data:exportCSV()}); showToast('✓ Exported '+project().id+'-tasks.csv'); }
-  catch(e){ if(!e || e.code!=='declined') showToast('✗ Export failed.'); }
+  const filename=project().id+'-tasks.csv';
+  if(dl){
+    try{ await dl.save({filename, data:exportCSV()}); showToast('✓ Exported '+filename); }
+    catch(e){ if(!e || e.code!=='declined') showToast('✗ Export failed.'); }
+    return;
+  }
+  try{
+    standaloneDownload(filename, exportCSV());
+    showToast('✓ Exported '+filename);
+  }catch(e){ showToast('✗ Export failed.'); }
 }
 function importSnapshot(obj){
   if(!obj || typeof obj!=='object' || !Array.isArray(obj.projects)) throw new Error('not a WorkFlow export');
@@ -318,7 +380,7 @@ function byId(id){return document.getElementById(id);}
 function project(){return PROJECTS.find(p=>p.id===state.projectId);}
 function rangeOf(proj){
   const real=leafTasks(proj);
-  if(!real.length) return {start:TODAY-5, end:TODAY+25};
+  if(!real.length) return {start:DEMO_TODAY-5, end:DEMO_TODAY+25};
   let min=Infinity,max=-Infinity;
   real.forEach(x=>{min=Math.min(min,x.start); max=Math.max(max,x.end);});
   return {start:min-3, end:max+4};
@@ -328,7 +390,7 @@ function statusLabel(s){return {done:'Complete',hold:'Weather hold',critical:'Fl
 // Reassigns rather than mutating in place (no .unshift() on the existing array) — belt-
 // and-suspenders alongside the deserializeTasks fix above, so this stays safe even if some
 // other code path ever hands it a task whose history array wasn't freshly cloned.
-function pushHistory(it,text){ it.history=[{date:iso(TODAY), text:'By You — '+text}, ...(it.history||[])]; }
+function pushHistory(it,text){ it.history=[{date:iso(DEMO_TODAY), text:'By You — '+text}, ...(it.history||[])]; }
 function showToast(msg){ const el=byId('toast'); el.textContent=msg; el.classList.add('show'); clearTimeout(showToast._t); showToast._t=setTimeout(()=>el.classList.remove('show'),2600); }
 
 /* ---------- resource math ---------- */
@@ -364,6 +426,13 @@ function pobBreaches(proj){
 
 /* ---------- shell: sidebar / tabs / toolbar / POB banner ---------- */
 function renderSidebar(){
+  // Environment badge — replace its text each render so it stays current after loadState settles.
+  const badgeEl=byId('envBadge');
+  if(badgeEl){
+    const eb=envBadgeText();
+    badgeEl.textContent=eb.text;
+    badgeEl.className='env-badge '+eb.cls;
+  }
   const list=byId('projList'); list.innerHTML='';
   PROJECTS.forEach(p=>{
     const row=document.createElement('div'); row.className='proj-row';
@@ -798,10 +867,10 @@ function renderGantt(){
   svg.appendChild(defs);
   const overlay=document.createElement('div'); overlay.className='overlay'; overlay.style.height=rowsHeight+'px'; overlay.style.width=totalWidth+'px';
   overlay.appendChild(svg);
-  const todayX=(TODAY-rangeStart)*pxPerDay;
+  const todayX=(DEMO_TODAY-rangeStart)*pxPerDay;
   if(todayX>=0 && todayX<=totalWidth){
     const line=document.createElement('div'); line.className='today-line'; line.style.left=todayX+'px'; line.style.height=rowsHeight+'px';
-    const flag=document.createElement('div'); flag.className='today-flag'; flag.style.left=todayX+'px'; flag.textContent='TODAY · demo';
+    const flag=document.createElement('div'); flag.className='today-flag'; flag.style.left=todayX+'px'; flag.textContent='Demo date · 2027-03-24';
     overlay.appendChild(line); overlay.appendChild(flag);
   }
   rowsWrap.appendChild(overlay);
@@ -843,7 +912,7 @@ function createGroupFromSelection(name){
   const first=proj.tasks.find(x=>x.id===ids[0]); if(!first) return;
   const phase=first.phase;
   const groupId=uid('g');
-  const g={id:groupId, phase, name:(name||'New group'), group:true, parent:null, collapsed:false, history:[{date:iso(TODAY),text:'By You — Group created.'}]};
+  const g={id:groupId, phase, name:(name||'New group'), group:true, parent:null, collapsed:false, history:[{date:iso(DEMO_TODAY),text:'By You — Group created.'}]};
   const firstIdx=proj.tasks.findIndex(x=>x.id===ids[0]);
   proj.tasks.splice(firstIdx,0,g);
   const affected=new Set();
@@ -1101,7 +1170,7 @@ function openTransferModal(x){
   byId('xferModalTitle').textContent=x?'Edit transfer':'New transfer';
   xfMode=x?x.mode:'heli';
   byId('xfModeSeg').querySelectorAll('button').forEach(b=>b.classList.toggle('active', b.dataset.mode===xfMode));
-  byId('xfDate').value=x?iso(x.day):iso(TODAY);
+  byId('xfDate').value=x?iso(x.day):iso(DEMO_TODAY);
   byId('xfLabel').value=x?x.label:'';
   state.xfManifest=x?x.manifest.map(m=>[m[0],m[1],m[2]]):[];
   renderManifestRows();
@@ -1209,7 +1278,7 @@ function renderResourcesPanel(){
   });
   rowsWrap.style.height=ry+'px';
   content.appendChild(rowsWrap);
-  const todayX=(TODAY-rangeStart)*pxPerDay;
+  const todayX=(DEMO_TODAY-rangeStart)*pxPerDay;
   if(todayX>=0 && todayX<=totalWidth){
     const overlay=document.createElement('div'); overlay.className='overlay'; overlay.style.height=ry+'px'; overlay.style.width=totalWidth+'px';
     const line=document.createElement('div'); line.className='today-line'; line.style.left=todayX+'px'; line.style.height=ry+'px';
@@ -1538,7 +1607,7 @@ function openTaskModal({milestone, phase}){
   byId('ntIsMilestone').checked=!!milestone;
   const phaseSel=byId('ntPhase'); phaseSel.innerHTML=PHASES.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
   if(phase) phaseSel.value=phase;
-  byId('ntStart').value=iso(TODAY); byId('ntEnd').value=iso(TODAY+2);
+  byId('ntStart').value=iso(DEMO_TODAY); byId('ntEnd').value=iso(DEMO_TODAY+2);
   toggleMsFields();
   state.newTaskRes=[];
   renderResPick(byId('ntResources'), state.newTaskRes);
@@ -1663,10 +1732,10 @@ byId('ntCreate').onclick=()=>{
   const start=D(byId('ntStart').value);
   const id=uid(isMs?'m':'t');
   let obj;
-  if(isMs){ obj={id,phase,name,start,end:start,milestone:true,preds:[],history:[{date:iso(TODAY),text:'By You — Milestone created.'}]}; }
+  if(isMs){ obj={id,phase,name,start,end:start,milestone:true,preds:[],history:[{date:iso(DEMO_TODAY),text:'By You — Milestone created.'}]}; }
   else {
     let end=D(byId('ntEnd').value)+1; if(end<=start) end=start+1;
-    obj={id,phase,name,start,end,resources:state.newTaskRes.map(r=>[r[0],r[1]]),preds:[],status:'upcoming',pct:0,notes:'',history:[{date:iso(TODAY),text:'By You — Task created.'}]};
+    obj={id,phase,name,start,end,resources:state.newTaskRes.map(r=>[r[0],r[1]]),preds:[],status:'upcoming',pct:0,notes:'',history:[{date:iso(DEMO_TODAY),text:'By You — Task created.'}]};
   }
   proj.tasks.push(obj);
   persistProject(proj);
@@ -1691,11 +1760,15 @@ byId('nrSave').onclick=()=>{
 byId('nrDelete').onclick=()=>{
   if(!nrDeleteArm){ nrDeleteArm=true; byId('nrDelete').textContent='Confirm delete?'; setTimeout(()=>{nrDeleteArm=false; byId('nrDelete').textContent='Delete resource';},3000); return; }
   const rk=state.editingResId; if(!rk) return;
-  PROJECTS.forEach(p=>p.tasks.forEach(t=>{ if(t.resources) t.resources=t.resources.filter(r=>r[0]!==rk); }));
+  let affected=0;
+  PROJECTS.forEach(p=>p.tasks.forEach(t=>{ if((t.resources||[]).some(r=>r[0]===rk)) affected++; }));
   delete RES[rk];
   persistConfig(); PROJECTS.forEach(persistProject);
   byId('resModalScrim').classList.remove('open');
-  renderAll(); showToast('✓ Resource deleted.');
+  renderAll();
+  showToast(affected
+    ? `✓ Resource deleted — removed from ${affected} task${affected===1?'':'s'}.`
+    : '✓ Resource deleted — not assigned to any task.');
 };
 
 byId('xfModeSeg').addEventListener('click', e=>{ const b=e.target.closest('button'); if(!b) return; xfMode=b.dataset.mode; byId('xfModeSeg').querySelectorAll('button').forEach(x=>x.classList.toggle('active', x===b)); });
@@ -1733,5 +1806,15 @@ byId('exportModalScrim').onclick=(e)=>{ if(e.target.id==='exportModalScrim') byI
 byId('expJson').onclick=()=>{ byId('exportModalScrim').classList.remove('open'); doExportJSON(); };
 byId('expCsv').onclick=()=>{ byId('exportModalScrim').classList.remove('open'); doExportCSV(); };
 byId('expPrint').onclick=()=>{ byId('exportModalScrim').classList.remove('open'); window.print(); };
+
+/* Environment badge — tells the user whether edits persist (artifact db) or are
+   local-only (localStorage). Drives the standalone-mode hint in the sidebar footer. */
+function envBadgeText(){
+  if(DB) return {text:'Connected — changes persist', cls:'env-connected'};
+  const ls=loadFromLocalStorage();
+  if(ls && (ls.projects&&ls.projects.length)) return {text:'Standalone — saved to this browser', cls:'env-standalone'};
+  return {text:'Standalone — changes are local only', cls:'env-standalone-new'};
+}
+
 byId('buildInfo').textContent=BUILD_INFO;
 loadState().then(renderAll);
