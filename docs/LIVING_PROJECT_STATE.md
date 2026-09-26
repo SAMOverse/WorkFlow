@@ -1,6 +1,6 @@
 # WORKFLOW - LIVING PROJECT STATE
-**Version:** 0.4
-**Last Updated:** 2026-09-22
+**Version:** 0.5
+**Last Updated:** 2026-09-26
 **Auto-Update:** Every session close
 
 ---
@@ -8,17 +8,31 @@
 ## Session Start Protocol
 
 **Read this file first.** Then, only if you need deeper context:
-- `docs/PROJECT_SPEC.md` §3 (MVP scope) — the mockup covers it, plus more (Network/CPM, POB, transfers, shifts weren't in the original spec draft — see "Scope Grown Beyond Spec" below).
-- `docs/LESSONS_LEARNED.md` — skim headers; LL-007–LL-009 are all from this session's long link-drag debugging saga and are worth reading in full before touching drag/CSS-positioning code or anything that mutates data loaded from the `db` capability.
+- `docs/PROJECT_SPEC.md` §3 (MVP scope) — the mockup covers it, plus more (Network/CPM, POB, transfers, shifts, WBS grouping weren't in the original spec draft — see "Scope Grown Beyond Spec" below).
+- `docs/LESSONS_LEARNED.md` — skim headers; LL-007–LL-009 (frozen-array/CSS-clipping debugging saga) before touching drag/CSS-positioning code or anything mutating `db`-loaded data; LL-010 (apostrophe-breaks-JS-string) before hand-editing any template-literal copy in `app.js`.
 
 **The interactive mockup is live and is the current source of truth for UX decisions**, not this doc's prose:
-**https://claude.ai/artifact/VG8GFdUXphmBCDqUa9sSgv** (currently version 29).
+**https://claude.ai/artifact/VG8GFdUXphmBCDqUa9sSgv** (currently version 35 — the in-app build tag in the sidebar footer reads "v34", one behind; it's a hand-bumped label, not authoritative, harmless to leave a version behind).
 
 **Immediate next actions, in order:**
-1. User-test v29 (dependency-delete-by-click) — untested in a live browser like everything else this session.
+1. User-test v35 — WBS grouping (including phase-as-group-target and the WBS-aware importer) is now wired into the real Gantt, but hasn't been exercised in a live browser by anyone but the user.
 2. Share the mockup with coworkers via **email invite** (not the bare public link — see "Sharing with Coworkers" below) so they can start using it and giving feedback.
 3. **Resolve the open distribution/architecture decision** (below) before starting real Supabase/Netlify work.
 4. Build the reorder-by-drag feature if/when it becomes a priority (scoped, not built — see below).
+
+---
+
+## WBS Grouping (built, v35 — needs live-browser testing)
+
+MS Project/Primavera-style task grouping: summary tasks that expand/collapse with a rolled-up bar, multi-select add/remove, and dependency arrows that re-anchor (not vanish) across a collapsed group. Prototyped standalone first (**https://claude.ai/artifact/CBCtqMziWrn2QaSe9ABtrt**, approved), then built in three rounds as live testing found gaps — the full build-out narrative lives in git history and this session's transcript, not repeated here.
+
+**Model:** a group is a task row (`group:true`, one level of nesting, `.parent` always null on a group itself); a leaf points at its group via `.parent`. Dates are never stored on a group, always computed live from its children (`rollupOf`). Dependencies are leaf-only. **Phase headers are also a valid grouping target** (not just user-created groups) — they get their own rollup bar and are a legitimate destination for reparenting, which makes cross-phase moves an explicit action rather than something silently skipped.
+
+**Three ways to reparent a task** (all through one function, `applyReparent`): checkbox multi-select + action bar (+New group / Move to ▾ — lists groups *and* phases / Remove from group); a one-click **Indent (⇥)** that joins whatever sits immediately above it; **drag-and-drop** via a grip (⠿) onto another task, a group, or a phase header.
+
+**The PDF/WBS-table importer now rebuilds groups from the source schedule's own outline** instead of discarding it — a leaf's immediate WBS parent (when it's a real row below the guessed phase) becomes an actual group, so an imported Primavera/MS Project schedule keeps its own summary/sub-task breakdown. Excel/CSV import is unchanged (no hierarchy signal in a flat spreadsheet).
+
+**Defaults chosen** (open questions at design time, resolved during implementation): single-level nesting only; dependencies never attach directly to a summary task; collapse state is just a task-object field, so it persists via the existing `db`-backed autosave with no separate mechanism.
 
 ---
 
@@ -33,26 +47,25 @@
 - **Guide tab** — in-app onboarding flow.
 - **Projects** — full lifecycle (create/rename/status/delete), not fixed to seed data.
 - **Persistence** — the artifact's own bundled `db` capability (shared JSON doc store, no external backend). See "Sharing with Coworkers" below for what this means and doesn't mean for multi-user use.
-- **Import** — WorkFlow JSON backup; Excel/CSV (auto-matched columns, optional leftover-column capture, Start/End/Duration consistency flags); a from-scratch deterministic parser for MS Project/Primavera-style WBS-table PDFs (upload the PDF directly, or paste extracted text) — no AI call, no size limit, handles day-first dates and WBS hierarchy correctly; falls back to an AI-interpret path for genuinely unstructured paste text.
+- **Import** — WorkFlow JSON backup; Excel/CSV (auto-matched columns, optional leftover-column capture, Start/End/Duration consistency flags); a from-scratch deterministic parser for MS Project/Primavera-style WBS-table PDFs (upload the PDF directly, or paste extracted text) — no AI call, no size limit, handles day-first dates and WBS hierarchy correctly, and now rebuilds the source's own summary/group structure (see "WBS Grouping" below); falls back to an AI-interpret path for genuinely unstructured paste text.
 - **Export/Print** — `.json` round-trip, `.csv`, native browser print with a dedicated print stylesheet.
+- **WBS grouping** — summary tasks, expand/collapse, multi-select/indent/drag-drop to group, phase headers double as a grouping target too. See dedicated section below.
 
 **Critical rule reversed this session (2026-09-22, first pass):** `CLAUDE.md`'s original "click-to-edit, not drag-to-resize" rule (carried forward from SAL Operations without ever being decided for WorkFlow) is gone. Direct manipulation is now the intended interaction model; every drag/edit writes a dated history entry, nothing silently overwritten. See LL-003.
 
 ---
 
-## This Session in Brief (2026-09-22, second session — a very long one)
+## Known Real, Not-Yet-Built Gaps
 
-Two threads: (1) built and hardened the PDF/WBS-table importer from scratch against a real user-supplied document, and (2) ten rounds of live-tested Gantt/drawer UX fixes, most notably a multi-round debugging saga on drag-to-link-dependency that ended in a genuine root cause (a frozen-array crash) rather than another guess. Both are written up in full in `LESSONS_LEARNED.md` LL-006 through LL-009 — read those before re-deriving any of this from scratch. Everything built this session is live in the mockup (v29) and **none of it has been exercised in an actual browser session by Claude** — only by the user, iteratively, which is how the bugs above got found at all.
-
-**Known real, not-yet-built gaps** (asked about or scoped, deliberately deferred):
-- **Drag-to-reorder tasks within a phase** — user wants press-and-hold-drag on a task's row label to manually resequence it. Scoped (visual-only, snaps back to date order on next render/edit — confirmed with the user) but not built.
-- **Predecessor-column import** (e.g., Primavera's `12FS+2d` syntax) — user's current real document doesn't have one; deferred until a real sample with this column exists, per LL-006's own lesson.
-- **Per-project custom phases** — the importer's phase-guessing maps into a fixed 6-item global `PHASES` list (`data.js`); a real schedule has far more groupings of its own. Real product question, not a mockup polish item.
+Asked about or scoped, deliberately deferred:
+- **Drag-to-reorder tasks within a phase** — user wants press-and-hold-drag on a task's row label to manually resequence it (separate from the drag-to-group grip added this session). Scoped (visual-only, snaps back to date order on next render/edit — confirmed with the user) but not built.
+- **Predecessor-column import** (e.g., Primavera's `12FS+2d` syntax) — no real document with this column yet; deferred per LL-006.
+- **Per-project custom phases** — the importer's phase-guessing maps into a fixed 6-item global `PHASES` list (`data.js`); a real schedule has far more groupings of its own. Real product question, not a mockup polish item — WBS grouping (this session) covers *some* of this need already, worth revisiting whether it's now sufficient before building custom phases too.
 - **Bar color: status vs. phase-driven** — asked directly, user confirmed: keep the current status-driven fill. Settled, don't revisit without new input.
 
 ---
 
-## Sharing the Mockup with Coworkers (resolved this session)
+## Sharing the Mockup with Coworkers (resolved)
 
 User's real near-term goal: internal use, side project on GitHub, not monetized. Coworkers should be able to use it for their own work ASAP and give feedback — each works on their **own separate project**, independently (not co-editing one shared schedule; a possible future "collaborative planning — stitch scopes together" feature was mentioned but isn't needed now).
 
@@ -80,15 +93,9 @@ Given this session's coworker-sharing decision (above) leans the actual near-ter
 
 ---
 
-## Advisory Given, Not Acted On
-
-User asked for a UAT framework proposal (structure, KPIs, assessment criteria, scoring methodology, rough token-cost estimate) and a standalone-executable conversion effort estimate — both answered in chat this session, explicitly **not** built or executed. Worth referencing back to that conversation turn if resuming either topic, rather than re-deriving from scratch.
-
----
-
 ## Scope Grown Beyond Original Spec
 
-Came from user feedback during mockup iteration, not `PROJECT_SPEC.md`'s original MVP list — worth folding into the spec once the mockup phase closes, since these are now expected behavior, not extras: the Network/critical-path view, personnel transfer logistics (heli/boat), POB capacity tracking, shift patterns, and the import/export/print tooling.
+Came from user feedback during mockup iteration, not `PROJECT_SPEC.md`'s original MVP list — worth folding into the spec once the mockup phase closes, since these are now expected behavior, not extras: the Network/critical-path view, personnel transfer logistics (heli/boat), POB capacity tracking, shift patterns, the import/export/print tooling, and WBS grouping (summary tasks).
 
 ---
 
@@ -97,13 +104,14 @@ Came from user feedback during mockup iteration, not `PROJECT_SPEC.md`'s origina
 - **2026-09-20:** Project spun off from SAL Operations' Rotation Forecast module. Spec written, repo scaffolded, GitHub repo created and pushed.
 - **2026-09-21:** Design discussion session — confirmed mockup-first approach. No code written.
 - **2026-09-22 (first session):** Long mockup-build day — initial Gantt/Resources mockup → full CRUD, drag-based direct manipulation, Network/CPM tab, POB tracking, personnel transfers, shift patterns, Guide tab → bundled-db persistence → import/export/print → full project lifecycle. See LL-001–LL-005.
-- **2026-09-22 (second session, this one):** PDF/WBS-table importer built from scratch against a real document; ten rounds of live-tested Gantt/drawer UX fixes; the coworker-sharing and architecture-direction questions substantively resolved. See LL-006–LL-009 and "This Session in Brief" above. Mockup now at v29.
+- **2026-09-22 (second session):** PDF/WBS-table importer built from scratch against a real document; ten rounds of live-tested Gantt/drawer UX fixes; coworker-sharing and architecture-direction questions substantively resolved. See LL-006–LL-009. Mockup at v29.
+- **2026-09-26:** WBS grouping designed as a standalone prototype first, approved, then built into the real Gantt across three rounds as live testing on the user's own schedule surfaced gaps (phase-as-group-target, then the WBS-aware importer). See "WBS Grouping" above and LL-010 (a real bug this session: an unescaped apostrophe in a hand-edited JS string literal, caught by `node --check` before publishing). Mockup now at v35.
 
 ---
 
 ## Next Steps
 
-1. User-tests v29; report back whatever breaks with real evidence if it's not obvious (console output, exact repro) — three separate rounds this session were burned on plausible-but-wrong static-analysis guesses before a real stack trace resolved the actual bug. Don't repeat that pattern.
+1. User-tests v35 against their real schedule — try the WBS-table PDF/paste re-import to confirm groups now come back matching the source, and exercise indent/drag/move-to-phase on real data. Report back whatever breaks with real evidence (console output, exact repro) — recurring pattern this project: guessing at a fix without a real stack trace burns rounds, a real repro resolves it in one.
 2. Share via email invite with coworkers; watch for any real friction from the "separate projects, no live sync" model as more people actually use it.
-3. Get an explicit answer on hosted-vs-standalone (this session's evidence leans hosted); update `PROJECT_SPEC.md` §4 once decided.
-4. Once architecture is settled and mockup scope feels sufficient: fold "grown beyond spec" items into `PROJECT_SPEC.md`, then start the real build.
+3. Get an explicit answer on hosted-vs-standalone (evidence leans hosted); update `PROJECT_SPEC.md` §4 once decided.
+4. Once architecture is settled and mockup scope feels sufficient: fold "grown beyond spec" items (including WBS grouping) into `PROJECT_SPEC.md`, then start the real build.
