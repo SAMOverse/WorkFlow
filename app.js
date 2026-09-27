@@ -286,7 +286,7 @@ function persistProject(proj){
   DB.doc('projects/'+proj.id).set({name:proj.name, status:proj.status, statusClass:proj.statusClass, tasks:serializeTasks(proj.tasks), transfers:serializeTransfers(proj.transfers||[])}).catch(()=>{});
 }
 function persistConfig(){ saveToLocalStorage(); if(!DB) return; DB.doc('config/main').set({resources:RES, shifts:SHIFTS, pobCap:POB_CAP}).catch(()=>{}); }
-function persistProjectIndex(){ if(!DB) return; DB.doc('config/projects').set({ids:PROJECTS.map(p=>p.id)}).catch(()=>{}); }
+function persistProjectIndex(){ saveToLocalStorage(); if(!DB) return; DB.doc('config/projects').set({ids:PROJECTS.map(p=>p.id)}).catch(()=>{}); }
 
 /* ---------- import / export / print ---------- */
 async function getDownloads(){
