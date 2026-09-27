@@ -479,6 +479,22 @@ function loadPdfJs(){
   }
   return pdfjsModPromise;
 }
+
+/* Suppress known pdf.js worker cleanup noise — the async message channel
+   can close before a pending response arrives during doc.getDocument()/
+   page.getTextContent(), producing an unhandled rejection that has no
+   effect on the extracted text (which is already resolved by then). */
+if(!(window._wfPdfJsWarned)){
+  window._wfPdfJsWarned=true;
+  window.addEventListener('unhandledrejection', e=>{
+    const msg=(e.reason&&e.reason.message)||'';
+    if(msg.includes('message channel closed before a response was received')
+       || msg.includes('undefined function')){
+      e.preventDefault();
+    }
+  }, {once:false});
+}
+
 async function extractPdfText(file){
   const pdfjsLib=await loadPdfJs();
   const buf=await file.arrayBuffer();
