@@ -458,6 +458,21 @@ function renderSidebar(){
       themeToggle.textContent=next==='dark'?'☀ Light':'🌙 Dark';
       renderAll();
     };
+
+  // Reset demo data — restores seed state from scratch (clears localStorage).
+  const resetBtn=byId('resetDemoBtn');
+  if(resetBtn){
+    resetBtn.onclick=()=>{
+      if(!confirm('Reset all data to the built-in demo schedule? This clears everything you\'ve added or changed in this browser.')) return;
+      localStorage.removeItem('wf_state_v2');
+      PROJECTS=SEED_PROJECTS.map(p=>({...p}));
+      RES=SEED_RES; SHIFTS=SEED_SHIFTS; POB_CAP=SEED_POB_CAP;
+      state.projectId=PROJECTS[0].id; state.selectedId=null;
+      document.documentElement.removeAttribute('data-theme');
+      renderAll();
+      showToast('✓ Demo data restored.');
+    };
+  }
   }
 }
 function switchTab(tab){
