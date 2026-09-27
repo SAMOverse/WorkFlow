@@ -108,49 +108,55 @@ function updateImportCount(){
   byId('importCountHint').textContent = n ? `${n} task${n===1?'':'s'} ready to import` : '';
   byId('importConfirm').disabled = (n===0);
 }
-byId('importConfirm').onclick=()=>{
-  if(currentImportSrc()==='json'){
-    if(!pendingJsonObj) return;
-    const obj=pendingJsonObj;
-    importSnapshot(obj);
-    resetJsonPreview();
+byId('importConfirm').onclick=async ()=>{
+  try{
+    if(currentImportSrc()==='json'){
+      if(!pendingJsonObj) return;
+      const obj=pendingJsonObj;
+      importSnapshot(obj);
+      resetJsonPreview();
+      closeImportModal();
+      renderAll();
+      showToast('✓ Imported — overwrote the reviewed items, added anything new.');
+      return;
+    }
+    const proj=project();
+    if(!proj){ showToast('No project selected — create or switch to a project first.'); return; }
+    const toAdd=stagedRows.filter(r=>r.include);
+    // Rows carrying a subGroupWbs came from the PDF/WBS-table parser, which now keeps the
+    // source's own intermediate summary rows instead of discarding them — one new group task
+    // per unique (phase, source WBS parent) pair, shared by every row under it.
+    const groupIds={};
+    toAdd.forEach(r=>{
+      let parentId;
+      if(r.subGroupWbs){
+        const key=r.phaseId+'|'+r.subGroupWbs;
+        if(!groupIds[key]){
+          const gid=uid('g');
+          proj.tasks.push({id:gid, phase:r.phaseId, name:r.subGroupName||'Imported group', group:true, parent:null, collapsed:false,
+            history:[{date:iso(DEMO_TODAY), text:'By You — Group created from the imported schedule’s own WBS structure.'}]});
+          groupIds[key]=gid;
+        }
+        parentId=groupIds[key];
+      }
+      proj.tasks.push({
+        id: uid('t'), phase: r.phaseId, name: (r.name||'').trim()||'Untitled task',
+        start: r.start, end: Math.max(r.end, r.start+1), resources: [], preds: [],
+        status: r.status||'upcoming', pct: 0, notes: r.notes||'', parent: parentId,
+        wbsRef: (r._extra && r._extra['WBS code']) || undefined,
+        sourceDuration: (r._extra && r._extra['Source duration text']) || undefined,
+        history: [{date: iso(DEMO_TODAY), text: 'By You — Imported.'}]
+      });
+    });
+    persistProject(proj);
     closeImportModal();
     renderAll();
-    showToast('✓ Imported — overwrote the reviewed items, added anything new.');
-    return;
+    const groupCount=Object.keys(groupIds).length;
+    showToast(`✓ Imported ${toAdd.length} task${toAdd.length===1?'':'s'} into ${proj.name}.`+(groupCount?` Grouped into ${groupCount} summary task${groupCount===1?'':'s'} from the source WBS.`:''));
+  }catch(e){
+    console.error('Import failed:', e);
+    showToast('✗ Import failed — see the browser console for details.');
   }
-  const proj=project();
-  const toAdd=stagedRows.filter(r=>r.include);
-  // Rows carrying a subGroupWbs came from the PDF/WBS-table parser, which now keeps the
-  // source's own intermediate summary rows instead of discarding them — one new group task
-  // per unique (phase, source WBS parent) pair, shared by every row under it.
-  const groupIds={};
-  toAdd.forEach(r=>{
-    let parentId;
-    if(r.subGroupWbs){
-      const key=r.phaseId+'|'+r.subGroupWbs;
-      if(!groupIds[key]){
-        const gid=uid('g');
-        proj.tasks.push({id:gid, phase:r.phaseId, name:r.subGroupName||'Imported group', group:true, parent:null, collapsed:false,
-          history:[{date:iso(DEMO_TODAY), text:'By You — Group created from the imported schedule’s own WBS structure.'}]});
-        groupIds[key]=gid;
-      }
-      parentId=groupIds[key];
-    }
-    proj.tasks.push({
-      id: uid('t'), phase: r.phaseId, name: (r.name||'').trim()||'Untitled task',
-      start: r.start, end: Math.max(r.end, r.start+1), resources: [], preds: [],
-      status: r.status||'upcoming', pct: 0, notes: r.notes||'', parent: parentId,
-      wbsRef: (r._extra && r._extra['WBS code']) || undefined,
-      sourceDuration: (r._extra && r._extra['Source duration text']) || undefined,
-      history: [{date: iso(DEMO_TODAY), text: 'By You — Imported.'}]
-    });
-  });
-  persistProject(proj);
-  closeImportModal();
-  renderAll();
-  const groupCount=Object.keys(groupIds).length;
-  showToast(`✓ Imported ${toAdd.length} task${toAdd.length===1?'':'s'} into ${proj.name}.`+(groupCount?` Grouped into ${groupCount} summary task${groupCount===1?'':'s'} from the source WBS.`:''));
 };
 
 /* ---------- JSON backup pane — preview the overwrite before committing ---------- */
