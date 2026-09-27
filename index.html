@@ -1,0 +1,294 @@
+<title>WorkFlow</title>
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" crossorigin="anonymous">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" integrity="sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw" crossorigin="anonymous"></script>
+
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><span class="mark"></span><h1 class="disp">WorkFlow</h1></div>
+    <div class="side-section">
+      <h2>Projects</h2>
+      <div class="proj-list" id="projList"></div>
+      <button class="btn ghost small" id="newProjBtn" style="width:100%; margin-top:6px;">+ New project</button>
+    </div>
+    <div class="side-section hide-mobile legend">
+      <h2>Status key</h2>
+      <div class="legend-row"><span class="legend-swatch" style="background:var(--surface); border:1px dashed var(--line-strong)"></span>Upcoming</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:var(--surface-3);border:1px solid var(--line-strong)"></span>In progress</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:repeating-linear-gradient(45deg,var(--hold-bg),var(--hold-bg) 3px,var(--surface) 3px,var(--surface) 6px);border:1px solid var(--hold)"></span>Weather hold</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:var(--critical-bg);border:1px solid var(--critical)"></span>Flagged critical</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:var(--ok-bg);border:1px solid var(--ok)"></span>Complete</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:var(--info); width:9px; height:9px; transform:rotate(45deg); border-radius:2px;"></span>Milestone</div>
+      <div class="legend-row"><span class="legend-swatch" style="background:var(--info-bg); color:var(--info); display:flex; align-items:center; justify-content:center; border-radius:50%; font-size:9px;">✈</span>Personnel transfer</div>
+    </div>
+    <div class="side-section hide-mobile">
+      <h2>Why this list?</h2>
+      <p style="font-size:11.5px; color:var(--ink-dim); margin:0; line-height:1.5;">Every value the Status field (in a task's detail panel) can be set to, plus the two other markers on the timeline. See the Guide tab for the full walkthrough.</p>
+    </div>
+    <div class="sidebar-foot">Drag a bar to reschedule, drag its edge to trim duration, drag from either end's dot onto another bar to link them. Every drag writes a dated update — nothing is silently overwritten.<div id="envBadge" class="env-badge"></div>
+    <div id="buildInfo" class="build-info"></div></div>
+  </aside>
+
+  <main class="main">
+    <div class="tabbar" id="tabbar">
+      <button data-tab="gantt" class="active">Gantt</button>
+      <button data-tab="resources">Resources</button>
+      <button data-tab="network">Network</button>
+      <button data-tab="guide">Guide</button>
+    </div>
+    <div class="pob-banner" id="pobBanner"></div>
+
+    <div class="toolbar" id="toolbar">
+      <div class="title-block">
+        <h2 id="projTitle">—</h2>
+        <div class="sub" id="projSub">—</div>
+      </div>
+      <div id="toolbarExtra" style="display:flex; align-items:center; gap:14px; flex-wrap:wrap;"></div>
+    </div>
+
+    <div class="tabpanel active" id="panel-gantt">
+      <div class="board-scroll" id="boardScroll"><div class="board-content" id="boardContent"></div></div>
+    </div>
+
+    <div class="tabpanel" id="panel-resources">
+      <div class="shift-panel">
+        <div class="shift-panel-head"><h3>Shift patterns</h3></div>
+        <div class="shift-table" id="shiftTable"></div>
+      </div>
+      <div class="board-scroll" id="resScroll"><div class="board-content" id="resContent"></div></div>
+    </div>
+
+    <div class="tabpanel" id="panel-network">
+      <div class="net-legend">
+        <span class="item"><span class="sw" style="background:var(--critical)"></span>Critical path (zero float)</span>
+        <span class="item"><span class="sw" style="background:var(--line-strong)"></span>Has float</span>
+        <span class="item">⚠ = resource conflict overlaps this task's dates</span>
+      </div>
+      <div class="net-scroll" id="netScroll"><div class="net-content" id="netContent"></div></div>
+    </div>
+
+    <div class="tabpanel" id="panel-guide"><div class="guide-scroll" id="guideContent"></div></div>
+  </main>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer">
+  <div class="drawer-head">
+    <div class="row1">
+      <h3 id="dTitle">Task name</h3>
+      <button class="icon-btn" id="dClose">✕</button>
+    </div>
+    <div style="display:flex; gap:6px; align-items:center;">
+      <span class="pill" id="dPhasePill"></span>
+      <span class="pill" id="dStatusPill"></span>
+    </div>
+  </div>
+  <div class="drawer-body">
+    <div class="field-row">
+      <div class="field-group anchor-field" id="dStartGroup"><label class="flabel">Start <button type="button" class="anchor-pin" id="dPinStart" title="Pin Start — it stays fixed while you edit End or Days">📌</button></label><input type="date" id="dStart"></div>
+      <div class="field-group anchor-field" id="dEndGroup"><label class="flabel">End <button type="button" class="anchor-pin" id="dPinEnd" title="Pin End — it stays fixed while you edit Start or Days">📌</button></label><input type="date" id="dEnd"></div>
+      <div class="field-group anchor-field" id="dDurGroup" style="flex:0 0 84px;"><label class="flabel">Days <button type="button" class="anchor-pin" id="dPinDur" title="Pin Days — it stays fixed while you edit Start or End">📌</button></label><input class="mono" type="number" min="1" id="dDur"></div>
+    </div>
+    <div class="dep-note" id="dAnchorNote" style="margin-top:-10px;"></div>
+    <div class="field-row">
+      <div class="field-group">
+        <label class="flabel">Status</label>
+        <select id="dStatus">
+          <option value="upcoming">Upcoming</option>
+          <option value="progress">In progress</option>
+          <option value="hold">Weather hold</option>
+          <option value="critical">Flagged critical</option>
+          <option value="done">Complete</option>
+        </select>
+      </div>
+      <div class="field-group"><label class="flabel">% complete</label><input type="number" id="dPct" min="0" max="100"></div>
+    </div>
+    <div class="progress-wrap"><div class="progress-track"><div class="progress-fill" id="dPctBar"></div></div></div>
+    <div class="dep-note" style="margin-top:-10px;">Complete always shows 100%, Upcoming always shows 0% — both set automatically. In progress, Weather hold and Flagged critical take whatever % you enter.</div>
+    <div class="field-group" id="dResourcesGroup">
+      <label class="flabel">Assigned resources</label>
+      <div class="res-pick" id="dResources"></div>
+    </div>
+    <div class="field-group">
+      <label class="flabel">Depends on (finish-to-start)</label>
+      <div class="chip-row" id="dPreds"></div>
+      <div class="typeahead" style="margin-top:4px;">
+        <input type="text" id="dAddPredSearch" placeholder="+ Add dependency… type to search" autocomplete="off">
+        <div class="typeahead-results" id="dAddPredResults"></div>
+      </div>
+    </div>
+    <div class="field-group">
+      <label class="flabel">Notes</label>
+      <textarea id="dNotes" placeholder="Add context for the next person who opens this task…"></textarea>
+    </div>
+    <div class="field-group">
+      <label class="flabel">Activity</label>
+      <div class="history-list" id="dHistory"></div>
+    </div>
+  </div>
+  <div class="drawer-foot">
+    <button class="btn danger small" id="dDelete">Delete</button>
+    <div class="right">
+      <span class="hint" id="dSaveHint">Saving records a dated update.</span>
+      <button class="btn ghost" id="dCancel">Cancel</button>
+      <button class="btn primary" id="dSave">Save</button>
+    </div>
+  </div>
+</aside>
+
+<div class="modal-scrim" id="taskModalScrim">
+  <div class="modal">
+    <div class="modal-head"><h3 id="taskModalTitle">New task</h3><button class="icon-btn" id="taskModalClose">✕</button></div>
+    <div class="modal-body">
+      <div class="field-group"><label class="flabel">Name</label><input type="text" id="ntName" placeholder="e.g. Rig down cement spread"></div>
+      <div class="checkbox-row"><input type="checkbox" id="ntIsMilestone"><label for="ntIsMilestone">This is a milestone (zero duration)</label></div>
+      <div class="field-group"><label class="flabel">Phase</label><select id="ntPhase"></select></div>
+      <div class="field-row">
+        <div class="field-group"><label class="flabel">Start</label><input type="date" id="ntStart"></div>
+        <div class="field-group" id="ntEndGroup"><label class="flabel">End</label><input type="date" id="ntEnd"></div>
+      </div>
+      <div class="field-group" id="ntResGroup">
+        <label class="flabel">Assigned resources</label>
+        <div class="res-pick" id="ntResources"></div>
+      </div>
+    </div>
+    <div class="modal-foot"><button class="btn ghost" id="ntCancel">Cancel</button><button class="btn primary" id="ntCreate">Create</button></div>
+  </div>
+</div>
+
+<div class="modal-scrim" id="resModalScrim">
+  <div class="modal">
+    <div class="modal-head"><h3 id="resModalTitle">New resource</h3><button class="icon-btn" id="resModalClose">✕</button></div>
+    <div class="modal-body">
+      <div class="field-group"><label class="flabel">Name / role</label><input type="text" id="nrName" placeholder="e.g. ROV Team"></div>
+      <div class="field-group"><label class="flabel">Capacity (max simultaneous)</label><input type="number" id="nrCap" min="1" value="1"></div>
+      <div class="field-group">
+        <label class="flabel">Shift</label>
+        <div class="seg" id="nrShiftSeg"></div>
+      </div>
+    </div>
+    <div class="modal-foot" style="justify-content:space-between;">
+      <button class="btn danger small" id="nrDelete" style="display:none;">Delete resource</button>
+      <div style="display:flex; gap:10px;"><button class="btn ghost" id="nrCancel">Cancel</button><button class="btn primary" id="nrSave">Save</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-scrim" id="projModalScrim">
+  <div class="modal">
+    <div class="modal-head"><h3 id="projModalTitle">New project</h3><button class="icon-btn" id="projModalClose">✕</button></div>
+    <div class="modal-body">
+      <div class="field-group"><label class="flabel">Name</label><input type="text" id="pjName" placeholder="e.g. Tanjung Riser Replacement"></div>
+      <div class="field-group">
+        <label class="flabel">Status</label>
+        <select id="pjStatus">
+          <option value="Active">Active</option>
+          <option value="Planning">Planning</option>
+          <option value="On Hold">On Hold</option>
+          <option value="Closed">Closed</option>
+        </select>
+      </div>
+      <div class="dep-note" id="pjNote"></div>
+    </div>
+    <div class="modal-foot" style="justify-content:space-between;">
+      <button class="btn danger small" id="pjDelete" style="display:none;">Delete project</button>
+      <div style="display:flex; gap:10px;"><button class="btn ghost" id="pjCancel">Cancel</button><button class="btn primary" id="pjSave">Save</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-scrim" id="xferModalScrim">
+  <div class="modal">
+    <div class="modal-head"><h3 id="xferModalTitle">New transfer</h3><button class="icon-btn" id="xferModalClose">✕</button></div>
+    <div class="modal-body">
+      <div class="field-group">
+        <label class="flabel">Mode</label>
+        <div class="seg" id="xfModeSeg"><button data-mode="heli">Helicopter</button><button data-mode="boat">Boat</button></div>
+      </div>
+      <div class="field-row">
+        <div class="field-group"><label class="flabel">Date</label><input type="date" id="xfDate"></div>
+        <div class="field-group"><label class="flabel">Label</label><input type="text" id="xfLabel" placeholder="e.g. Additional charter — extra hands for cutting phase"></div>
+      </div>
+      <div class="field-group">
+        <label class="flabel">Manifest</label>
+        <div id="xfManifestRows" style="display:flex; flex-direction:column; gap:6px;"></div>
+        <button class="btn ghost small" id="xfAddLine" style="align-self:flex-start; margin-top:4px;">+ Add line</button>
+      </div>
+    </div>
+    <div class="modal-foot" style="justify-content:space-between;">
+      <button class="btn danger small" id="xfDelete" style="display:none;">Delete transfer</button>
+      <div style="display:flex; gap:10px;"><button class="btn ghost" id="xfCancel">Cancel</button><button class="btn primary" id="xfSave">Save</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-scrim" id="exportModalScrim">
+  <div class="modal">
+    <div class="modal-head"><h3>Export &amp; print</h3><button class="icon-btn" id="exportModalClose">✕</button></div>
+    <div class="modal-body">
+      <div class="guide-ref" style="cursor:pointer;" id="expJson"><div class="ic">💾</div><div><div class="tt">Export full workspace (.json)</div><div class="dd">Every project, resource, shift and the POB cap — a complete backup, and the file Import expects back.</div></div></div>
+      <div class="guide-ref" style="cursor:pointer;" id="expCsv"><div class="ic">📋</div><div><div class="tt">Export current project's tasks (.csv)</div><div class="dd">Opens straight in Excel/Sheets — dates, status, %, resources, dependencies, notes.</div></div></div>
+      <div class="guide-ref" style="cursor:pointer;" id="expPrint"><div class="ic">🖨️</div><div><div class="tt">Print / save as PDF</div><div class="dd">Opens your browser's print dialog on the current tab. Use its Scale and Pages controls to fit and select pages. Week or Month zoom prints most legibly. If this does nothing, your browser's own Print command (Ctrl/Cmd+P) works the same way — the page is styled for print either way.</div></div></div>
+    </div>
+    <div class="modal-foot"><button class="btn ghost" id="exportModalClose2">Close</button></div>
+  </div>
+</div>
+
+<div class="modal-scrim" id="importModalScrim">
+  <div class="modal" style="width:760px;">
+    <div class="modal-head"><h3>Import</h3><button class="icon-btn" id="importModalClose">✕</button></div>
+    <div class="modal-body">
+      <div class="seg" id="importSourceSeg">
+        <button data-src="json">WorkFlow backup (.json)</button>
+        <button data-src="excel" class="active">Excel / CSV</button>
+        <button data-src="paste">Paste text (from a PDF, etc.)</button>
+      </div>
+
+      <div id="importJsonPane" style="display:none;">
+        <div class="field-group"><label class="flabel">File</label><input type="file" id="importJsonFile" accept=".json,application/json"></div>
+        <div class="dep-note">Matching projects and the shared resource/shift roster are <b>replaced</b> by what's in the file; projects not present in the file are left alone; new project ids are added.</div>
+        <div id="importJsonSummary" style="display:none; margin-top:10px;">
+          <div class="dep-note" style="background:var(--hold-bg); color:var(--hold); font-weight:600;">⚠ This will overwrite the items below — review, then click Import to confirm.</div>
+          <div id="importJsonSummaryList" style="display:flex; flex-direction:column; gap:4px; margin-top:8px;"></div>
+        </div>
+      </div>
+
+      <div id="importExcelPane">
+        <div class="field-group"><label class="flabel">File</label><input type="file" id="importExcelFile" accept=".xlsx,.xls,.csv"></div>
+        <div class="dep-note" id="importExcelStatus">Adds tasks to the current project. The first sheet's header row is auto-matched to Name / Start / End / Duration / Phase / Status / Resource / Notes — review and edit everything before importing.</div>
+      </div>
+
+      <div id="importPastePane" style="display:none;">
+        <div class="field-group"><label class="flabel">Upload a PDF</label><input type="file" id="importPdfFile" accept=".pdf,application/pdf"></div>
+        <div class="dep-note" style="margin-top:-6px; margin-bottom:10px;">Text is extracted in your browser and parsed automatically — nothing is uploaded anywhere. Scanned/image-only PDFs have no selectable text to extract; you'll be told if that happens.</div>
+        <div class="field-group"><label class="flabel">…or paste text</label><textarea id="importPasteText" style="min-height:120px;" placeholder="Select and copy the task list/table out of your PDF, then paste it here — a full MS Project or Primavera schedule export works, not just short excerpts."></textarea></div>
+        <button class="btn primary small" id="importInterpretBtn">✨ Parse pasted text</button>
+        <div class="dep-note" id="importPasteStatus" style="margin-top:8px;">Upload a PDF directly, or paste text copied from one. A recognized MS Project / Primavera schedule table (WBS, Duration, Start, Finish columns) is parsed directly — no AI, no size limit, works on the full document. Anything else is sent to Claude (this artifact's own "ask Claude" capability, billed to your account, asks permission the first time) to interpret. Scanned/image-only PDFs have no selectable text — you'll be told if that happens; run one through OCR or a PDF-to-Excel tool first, then use the Excel tab instead.</div>
+      </div>
+
+      <div id="importReviewWrap" style="display:none;">
+        <div id="importExtraFields"></div>
+        <div class="field-group">
+          <label class="flabel">Review before importing — uncheck any row to skip it, edit the rest inline. Scroll right if a row looks cut off.</label>
+          <div class="import-review-scroll" style="max-height:320px; overflow-y:auto;">
+            <div class="import-row-head"><span class="cb-sp"></span><span class="warn-sp"></span><span class="h-name">Name</span><span class="h-start">Start</span><span class="h-end">End</span><span class="h-phase">Phase</span></div>
+            <div id="importReviewTable" style="display:flex; flex-direction:column; gap:6px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-foot" style="justify-content:space-between;">
+      <span class="hint" id="importCountHint"></span>
+      <div style="display:flex; gap:10px;"><button class="btn ghost" id="importCancel">Cancel</button><button class="btn primary" id="importConfirm" disabled>Import</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="transfer-popover" id="transferPop"></div>
+<div class="transfer-popover" id="colPickerPop" style="width:190px;"></div>
+<div class="multisel-bar" id="multiSelBar" hidden></div>
+<div class="toast" id="toast"></div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+<script src="import.js"></script>
