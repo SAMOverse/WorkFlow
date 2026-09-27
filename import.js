@@ -150,6 +150,7 @@ byId('importConfirm').onclick=async ()=>{
     });
     persistProject(proj);
     closeImportModal();
+    switchTab('gantt');
     renderAll();
     const groupCount=Object.keys(groupIds).length;
     showToast(`✓ Imported ${toAdd.length} task${toAdd.length===1?'':'s'} into ${proj.name}.`+(groupCount?` Grouped into ${groupCount} summary task${groupCount===1?'':'s'} from the source WBS.`:''));
