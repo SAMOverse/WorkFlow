@@ -445,6 +445,20 @@ function renderSidebar(){
     row.appendChild(btn); row.appendChild(editBtn);
     list.appendChild(row);
   });
+  // Theme toggle — persisted in localStorage alongside everything else.
+  const themeToggle=byId('themeToggle');
+  if(themeToggle){
+    const cur=loadFromLocalStorage()?loadFromLocalStorage().theme:null;
+    const effective=cur||(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');
+    themeToggle.textContent=effective==='dark'?'☀ Light':'🌙 Dark';
+    themeToggle.onclick=()=>{
+      const next=document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      persistConfig();
+      themeToggle.textContent=next==='dark'?'☀ Light':'🌙 Dark';
+      renderAll();
+    };
+  }
 }
 function switchTab(tab){
   state.tab=tab;
